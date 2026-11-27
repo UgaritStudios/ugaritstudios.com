@@ -5,9 +5,10 @@ UP(){ curl -s -m 900 -X POST -H "Content-Type: application/octet-stream" --data-
 ( n=0; while true; do sleep 120; n=$((n+1)); cp /w/log.txt /w/hb.txt; UP /w/hb.txt "log_hb$(printf %02d $n).txt" >/dev/null 2>&1; done ) &
 [ -f /w/DONE ] && sleep infinity
 export DEBIAN_FRONTEND=noninteractive HF_HUB_ENABLE_HF_TRANSFER=1
+{ set +x; } 2>/dev/null
 [ -z "$HF_TOKEN" ] && unset HF_TOKEN
 case "$HF_TOKEN" in *RUNPOD_SECRET*) unset HF_TOKEN;; esac
-{ set +x; } 2>/dev/null; [ -n "$HF_TOKEN" ] && echo "HF_TOKEN present (len ${#HF_TOKEN})" || echo "HF_TOKEN missing"; set -x
+[ -n "$HF_TOKEN" ] && echo "HF_TOKEN present (len ${#HF_TOKEN})" || echo "HF_TOKEN missing"; set -x
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader; df -h /w | tail -1; free -g | head -2
 apt-get update -qq && apt-get install -y -qq ffmpeg git > /dev/null
 pip install -q --break-system-packages pillow numpy huggingface_hub hf_transfer imageio imageio-ffmpeg 2>&1 | tail -1
