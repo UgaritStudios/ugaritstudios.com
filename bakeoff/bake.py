@@ -163,6 +163,7 @@ def run_wan(shots):
     time.sleep(5); return times
 
 # ---------------- LTX-2.5 via Diffusers ----------------
+LTX_DISTILLED = False
 def run_ltx(shots):
     times = {}
     try:
@@ -180,7 +181,7 @@ def run_ltx(shots):
         log("diffusers", diffusers.__version__, "sigmas", DISTILLED_SIGMA_VALUES is not None, "i2v", LTX2ImageToVideoPipeline is not None)
         from huggingface_hub import snapshot_download
         t0 = time.time()
-        path = snapshot_download("Lightricks/LTX-2.5-Diffusers", ignore_patterns=["transformer_full/*", "*.md"], local_dir=f"{W}/ltx")
+        path = snapshot_download("Lightricks/LTX-2.5-Diffusers", ignore_patterns=["transformer_full/*", "prompt_enhancer/*", "*.md"], local_dir=f"{W}/ltx")
         log("ltx downloaded", f"{time.time()-t0:.0f}s", subprocess.run(f"du -sh {W}/ltx", shell=True, capture_output=True, text=True).stdout.strip())
         # The pod's container RAM (~50 GB) can't hold the bf16 22B transformer + Gemma text encoder,
         # so load them quantized straight onto the GPU (8-bit transformer, 4-bit text encoder).
@@ -190,7 +191,18 @@ def run_ltx(shots):
         qc = PipelineQuantizationConfig(quant_mapping={
             "transformer": DBnb(load_in_8bit=True) if qmode == "8" else DBnb(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16),
             "text_encoder": TBnb(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16)})
-        pipe = LTX2Pipeline.from_pretrained(path, torch_dtype=torch.bfloat16, quantization_config=qc, low_cpu_mem_usage=True)
+        try: pipe = LTX2Pipeline.from_pretrained(path, torch_dtype=torch.bfloat16, quantization_config=qc, low_cpu_mem_usage=True, prompt_enhancer=None, processor=None)
+        except Exception as e:
+            log("load without prompt_enhancer failed, retry default", repr(e)[:300])
+            pipe = LTX2Pipeline.from_pretrained(path, torch_dtype=torch.bfloat16, quantization_config=qc, low_cpu_mem_usage=True)
+            if getattr(pipe, "prompt_enhancer", None) is not None:
+                pipe.prompt_enhancer = None; import gc; gc.collect(); torch.cuda.empty_cache()
+        global LTX_DISTILLED
+        LTX_DISTILLED = False
+        loras = [f for f in os.listdir(path) if "distilled-lora" in f and f.endswith(".safetensors")]
+        if loras:
+            try: pipe.load_lora_weights(path, weight_name=loras[0], adapter_name="distilled"); LTX_DISTILLED = True; log("distilled lora loaded", loras[0])
+            except Exception as e: log("distilled lora failed", repr(e)[:400])
         for name, comp in pipe.components.items():
             if hasattr(comp, "to") and not getattr(comp, "is_loaded_in_8bit", False) and not getattr(comp, "is_loaded_in_4bit", False) and not getattr(getattr(comp, "config", None), "quantization_config", None):
                 try: comp.to("cuda")
@@ -210,7 +222,9 @@ def run_ltx(shots):
         if encode_video: log("encode_video signature", str(inspect.signature(encode_video))[:400])
         ipipe = None
         if LTX2ImageToVideoPipeline:
-            try: ipipe = LTX2ImageToVideoPipeline.from_pipe(pipe)
+            try:
+                want = inspect.signature(LTX2ImageToVideoPipeline.__init__).parameters
+                ipipe = LTX2ImageToVideoPipeline(**{k: v for k, v in pipe.components.items() if k in want})
             except Exception as e: log("i2v from_pipe failed", repr(e)[:300])
     except Exception as e:
         log("LTX SETUP FAILED", repr(e)[:800]); traceback.print_exc(file=LOG); return times
@@ -220,8 +234,8 @@ def run_ltx(shots):
         if p is None: log("no ltx pipe for", sid); continue
         kw = dict(prompt=s["prompt"], width=1280, height=704, num_frames=121, frame_rate=24.0,
                   generator=torch.Generator("cuda").manual_seed(3000 + k), output_type="np", return_dict=False)
-        if DISTILLED_SIGMA_VALUES is not None: kw.update(sigmas=DISTILLED_SIGMA_VALUES, guidance_scale=1.0)
-        else: kw.update(num_inference_steps=8, guidance_scale=1.0)
+        if LTX_DISTILLED and DISTILLED_SIGMA_VALUES is not None: kw.update(sigmas=DISTILLED_SIGMA_VALUES, guidance_scale=1.0)
+        else: kw.update(num_inference_steps=30, guidance_scale=3.0)
         if s.get("image"): kw["image"] = load_image(s["image"])
         try:
             params = inspect.signature(p.__call__).parameters
