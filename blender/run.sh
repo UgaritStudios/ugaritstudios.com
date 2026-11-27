@@ -2,7 +2,8 @@
 J=blender1
 mkdir -p /w/f; exec > /w/log.txt 2>&1; set -x
 UP(){ curl -s -m 600 -X POST --data-binary @"$1" "$DROP?job=$J&name=$2"; echo; }
-trap 'UP /w/log.txt blender_log.txt' EXIT
+( n=0; while true; do sleep 90; n=$((n+1)); cp /w/log.txt /w/hb.txt; UP /w/hb.txt "log_hb$(printf %02d $n).txt" >/dev/null 2>&1; done ) &
+if [ -f /w/DONE ]; then sleep infinity; fi
 T00=$(date +%s)
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq && apt-get install -y -qq ffmpeg xz-utils libxrender1 libxi6 libxkbcommon0 libsm6 libgl1 libxxf86vm1 libxfixes3 libegl1 >/dev/null
@@ -19,6 +20,7 @@ for a,b in reversed(vers):
         print(f"{d}blender-{v}-linux-x64.tar.xz"); break
 PY
 )
+[ -z "$URL" ] && URL="https://download.blender.org/release/Blender4.5/blender-4.5.3-linux-x64.tar.xz"
 echo "BLENDER_URL=$URL"
 curl -sL "$URL" | tar -xJ -C /w
 B=$(ls -d /w/blender-*/blender | head -1); $B --version | head -1
@@ -39,3 +41,6 @@ ls -la /w/globe_flyover_1080p.mp4
 UP /w/globe_flyover_1080p.mp4 globe_flyover_1080p.mp4
 UP /w/f/frame_0120.png frame_0120.png
 echo "total_seconds=$(( $(date +%s)-T00 ))"
+UP /w/log.txt blender_log.txt
+touch /w/DONE
+sleep infinity
