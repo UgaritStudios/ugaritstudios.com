@@ -12,7 +12,7 @@ case "$HF_TOKEN" in *RUNPOD_SECRET*) unset HF_TOKEN;; esac
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader; df -h /w | tail -1; free -g | head -2
 apt-get update -qq && apt-get install -y -qq ffmpeg git > /dev/null
 pip install -q --break-system-packages pillow numpy huggingface_hub hf_transfer imageio imageio-ffmpeg 2>&1 | tail -1
-pip install -q --break-system-packages "git+https://github.com/huggingface/diffusers" transformers accelerate sentencepiece bitsandbytes 2>&1 | tail -2
+pip install -q --break-system-packages "git+https://github.com/huggingface/diffusers" transformers accelerate sentencepiece bitsandbytes peft av 2>&1 | tail -2
 curl -sfL "$REPO/bake.py" -o /w/bake.py; curl -sfL "$REPO/../blender/Inter-Bold.otf" -o /w/Inter-Bold.otf
 if [ "$ONLY" != "ltx" ]; then git clone -q --depth 1 https://github.com/comfyanonymous/ComfyUI /w/ComfyUI
 cd /w/ComfyUI && grep -v -E '^(torch|torchvision|torchaudio)([<>=].*)?$' requirements.txt > /w/req2.txt && pip install -q --break-system-packages -r /w/req2.txt 2>&1 | tail -2; fi
