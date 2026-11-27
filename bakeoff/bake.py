@@ -247,8 +247,9 @@ if __name__ == "__main__":
     T0 = time.time()
     fetch_photos()
     shots = [s for s in PHOTO_SHOTS if s.get("image")] + TEXT_SHOTS
-    tw = run_wan(shots); log("WAN TIMES", json.dumps(tw), "elapsed", round(time.time() - T0))
-    tl = run_ltx(shots); log("LTX TIMES", json.dumps(tl), "elapsed", round(time.time() - T0))
-    side_by_side(shots, f"{W}/Inter-Bold.otf")
+    ONLY = os.environ.get("ONLY", "")
+    tw = {} if ONLY == "ltx" else run_wan(shots); log("WAN TIMES", json.dumps(tw), "elapsed", round(time.time() - T0))
+    tl = {} if ONLY == "wan" else run_ltx(shots); log("LTX TIMES", json.dumps(tl), "elapsed", round(time.time() - T0))
+    if not ONLY: side_by_side(shots, f"{W}/Inter-Bold.otf")
     json.dump({"wan": tw, "ltx": tl, "total_s": round(time.time() - T0)}, open(f"{OUT}/times.json", "w")); up(f"{OUT}/times.json", "times.txt")
     log("ALL DONE", round(time.time() - T0))
