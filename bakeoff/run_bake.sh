@@ -16,6 +16,7 @@ pip install -q --break-system-packages "git+https://github.com/huggingface/diffu
 curl -sfL "$REPO/bake.py" -o /w/bake.py; curl -sfL "$REPO/ltx_comfy.py" -o /w/ltx_comfy.py; curl -sfL "$REPO/../blender/Inter-Bold.otf" -o /w/Inter-Bold.otf
 if [ "$ONLY" != "ltx" ]; then git clone -q --depth 1 https://github.com/comfyanonymous/ComfyUI /w/ComfyUI
 cd /w/ComfyUI && grep -v -E '^(torch|torchvision|torchaudio)([<>=].*)?$' requirements.txt > /w/req2.txt && pip install -q --break-system-packages -r /w/req2.txt 2>&1 | tail -2; fi
+if [ "$ONLY" = "ltxc" ]; then pip install -q --break-system-packages --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130 2>&1 | tail -2; fi
 python3 -c "import torch;print('torch',torch.__version__,torch.cuda.is_available())"
 cd /w && if [ "$ONLY" = "ltxc" ]; then python3 /w/ltx_comfy.py; else python3 /w/bake.py; fi
 UP /w/log.txt bake_log.txt; touch /w/DONE; sleep infinity

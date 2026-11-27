@@ -3,7 +3,7 @@ Rebuilds the official ComfyUI templates video_ltx2_5_t2v / _i2v (two-stage: half
 x2 latent upscale, 3-step refine) as an API prompt. Same 6 shots and seeds as the Wan bake-off.
 Env: DROP, JOB, HF_TOKEN (gated repo), optional LTX_SECONDS (default 5).
 """
-import os, sys, json, time, shutil, subprocess, traceback
+import os, sys, json, time, shutil, subprocess, traceback, urllib.error
 sys.path.insert(0, "/w")
 import bake
 from bake import log, up, comfy_api, W, OUT, COMFY, PHOTO_SHOTS, TEXT_SHOTS
@@ -65,11 +65,10 @@ def build(prompt, seed, prefix, image_name=None):
     neg_c = g.add("CLIPTextEncode", links={"clip": (clip, 0)}, named={"text": NEG})
     cond = g.add("LTXVConditioning", links={"positive": (pos_c, 0), "negative": (neg_c, 0)}, named={"frame_rate": float(FPS)})
     vlat = g.add("EmptyLTXVLatentVideo", pos=[WIDTH // 2, HEIGHT // 2, L, 1])
-    alat = g.add("LTXVEmptyLatentAudio", links={"audio_vae": (avae, 0)}, pos=[L, FPS, 1])
+    alat = g.add("LTXVEmptyLatentAudio", links={"audio_vae": (avae, 0)}, named={"frames_number": L, "frame_rate": FPS, "batch_size": 1})
     if image_name:
         img = g.add("LoadImage", named={"image": image_name})
-        rs = g.add("ResizeImageMaskNode", links={"input": (img, 0)}, pos=["scale longer dimension", 1536, "lanczos"])
-        pre = g.add("LTXVPreprocess", links={"image": (rs, 0)}, pos=[18])
+        pre = g.add("LTXVPreprocess", links={"image": (img, 0)}, pos=[18])  # photos are already cropped to 1280x720
         vlat = g.add("LTXVImgToVideoInplace", links={"vae": (vae, 0), "image": (pre, 0), "latent": (vlat, 0)}, pos=[0.7, False])
     av1 = g.add("LTXVConcatAVLatent", links={"video_latent": (vlat, 0), "audio_latent": (alat, 0)})
     gd1 = g.add("LTXVDualCFGGuider", links={"model": (unet, 0), "positive": (cond, 0), "negative": (cond, 1)}, pos=[1, 1])
@@ -106,9 +105,10 @@ def main():
         try: comfy_api("/system_stats"); break
         except Exception: time.sleep(2)
     INFO.update(comfy_api("/object_info")); log("comfy up, node classes", len(INFO))
+    import torch; log("torch", torch.__version__, torch.version.cuda, torch.cuda.get_device_name(0))
     need = ["LTXVDualCFGGuider", "LTXVConcatAVLatent", "LTXVLatentUpsampler", "LTXVImgToVideoInplace", "ManualSigmas", "LTXVEmptyLatentAudio", "LTXVAudioVAEDecode", "LatentUpscaleModelLoader"]
     log("missing classes", [c for c in need if c not in INFO])
-    for c in need[:2] + ["LTXVImgToVideoInplace", "LTXVPreprocess", "ResizeImageMaskNode", "CLIPLoader"]:
+    for c in need[:2] + ["LTXVImgToVideoInplace", "LTXVPreprocess", "LTXVEmptyLatentAudio", "CLIPLoader"]:
         if c in INFO: log("widgets", c, widget_names(c))
     for k, s in enumerate(shots):
         sid = f"ltx_{s['id']}"; out = f"{OUT}/{sid}.mp4"; t0 = time.time()
@@ -118,7 +118,8 @@ def main():
                 iname = f"{s['id']}.jpg"; shutil.copy(s["image"], f"{COMFY}/input/{iname}")
             wf = build(s["prompt"], 3000 + k, sid, iname)
             if k == 0: json.dump(wf, open(f"{OUT}/ltx_prompt_example.json", "w"), indent=1)
-            r = comfy_api("/prompt", {"prompt": wf})
+            try: r = comfy_api("/prompt", {"prompt": wf})
+            except urllib.error.HTTPError as e: r = {"http_error": e.code, "body": e.read().decode()[:3000]}
             if "prompt_id" not in r: log("prompt rejected", sid, json.dumps(r)[:1500]); continue
             pid = r["prompt_id"]
             while True:
