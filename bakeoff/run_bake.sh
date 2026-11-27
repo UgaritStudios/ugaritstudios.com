@@ -4,7 +4,7 @@ mkdir -p /w; exec >> /w/log.txt 2>&1; set -x
 UP(){ curl -s -m 900 -X POST -H "Content-Type: application/octet-stream" --data-binary @"$1" "$DROP?job=$JOB&name=$2"; echo; }
 ( n=0; while true; do sleep 120; n=$((n+1)); cp /w/log.txt /w/hb.txt; UP /w/hb.txt "log_hb$(printf %02d $n).txt" >/dev/null 2>&1; done ) &
 [ -f /w/DONE ] && sleep infinity
-export DEBIAN_FRONTEND=noninteractive HF_HUB_ENABLE_HF_TRANSFER=1
+export DEBIAN_FRONTEND=noninteractive HF_HUB_ENABLE_HF_TRANSFER=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 { set +x; } 2>/dev/null
 [ -z "$HF_TOKEN" ] && unset HF_TOKEN
 case "$HF_TOKEN" in *RUNPOD_SECRET*) unset HF_TOKEN;; esac

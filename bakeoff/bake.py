@@ -186,7 +186,7 @@ def run_ltx(shots):
         # so load them quantized straight onto the GPU (8-bit transformer, 4-bit text encoder).
         from diffusers import PipelineQuantizationConfig, BitsAndBytesConfig as DBnb
         from transformers import BitsAndBytesConfig as TBnb
-        qmode = os.environ.get("LTX_QUANT", "8")
+        qmode = os.environ.get("LTX_QUANT", "4")
         qc = PipelineQuantizationConfig(quant_mapping={
             "transformer": DBnb(load_in_8bit=True) if qmode == "8" else DBnb(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16),
             "text_encoder": TBnb(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16)})
@@ -195,6 +195,16 @@ def run_ltx(shots):
             if hasattr(comp, "to") and not getattr(comp, "is_loaded_in_8bit", False) and not getattr(comp, "is_loaded_in_4bit", False) and not getattr(getattr(comp, "config", None), "quantization_config", None):
                 try: comp.to("cuda")
                 except Exception as e: log("to cuda failed", name, repr(e)[:200])
+        for name, comp in pipe.components.items():
+            try:
+                ps = list(comp.parameters()) if hasattr(comp, "parameters") else []
+                gb = sum(x.numel() * x.element_size() for x in ps) / 1e9
+                dev = ps[0].device if ps else None
+                log("component", name, type(comp).__name__, f"{gb:.1f}GB", dev)
+            except Exception as e: log("component", name, repr(e)[:120])
+        log("folder sizes", subprocess.run(f"du -sh {W}/ltx/* | sort -h | tail -12", shell=True, capture_output=True, text=True).stdout.replace(chr(10), " | "))
+        try: pipe.vae.enable_tiling(); log("vae tiling on")
+        except Exception as e: log("vae tiling n/a", repr(e)[:120])
         log("ltx loaded quant", qmode, "vram GB", round(torch.cuda.memory_allocated() / 1e9, 1), subprocess.run("free -g | sed -n 2p", shell=True, capture_output=True, text=True).stdout.strip())
         log("ltx call signature", str(inspect.signature(pipe.__call__))[:1500])
         if encode_video: log("encode_video signature", str(inspect.signature(encode_video))[:400])
