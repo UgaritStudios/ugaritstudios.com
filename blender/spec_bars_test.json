@@ -1,0 +1,19 @@
+{
+  "template": "bars3d",
+  "job_name": "bars_template_test",
+  "seconds": 6,
+  "title": "STORE COUNT BY YEAR",
+  "subtitle": "Template test - sample numbers",
+  "suffix": "",
+  "format": "{:,.0f}",
+  "palette": {"bg": [8, 14, 28], "floor": [14, 22, 40], "grid": [40, 60, 95], "bar": [60, 110, 190],
+              "accent": [214, 160, 58], "text": [245, 240, 230]},
+  "bars": [
+    {"label": "2020", "value": 12000},
+    {"label": "2021", "value": 18000},
+    {"label": "2022", "value": 24000},
+    {"label": "2023", "value": 32000},
+    {"label": "2024", "value": 41000},
+    {"label": "2025", "value": 46000, "highlight": true}
+  ]
+}
