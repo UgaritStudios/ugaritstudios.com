@@ -1,7 +1,7 @@
 #!/bin/bash
-J=blender1
+J=blender2
 mkdir -p /w/f; exec > /w/log.txt 2>&1; set -x
-UP(){ curl -s -m 600 -X POST --data-binary @"$1" "$DROP?job=$J&name=$2"; echo; }
+UP(){ curl -s -m 600 -X POST -H "Content-Type: application/octet-stream" --data-binary @"$1" "$DROP?job=$J&name=$2"; echo; }
 ( n=0; while true; do sleep 90; n=$((n+1)); cp /w/log.txt /w/hb.txt; UP /w/hb.txt "log_hb$(printf %02d $n).txt" >/dev/null 2>&1; done ) &
 if [ -f /w/DONE ]; then sleep infinity; fi
 T00=$(date +%s)
@@ -34,7 +34,7 @@ PY
 curl -sL "https://raw.githubusercontent.com/UgaritStudios/ugaritstudios.com/render-jobs/blender/globe_flyover.py" -o /w/globe_flyover.py; wc -c /w/globe_flyover.py
 T0=$(date +%s); echo "setup_seconds=$((T0-T00))"
 nvidia-smi --query-gpu=name,memory.total --format=csv
-$B -b -P /w/globe_flyover.py -- --out /w/f/frame_ --frames 1-120 --samples 64 --res 1920x1080 --device GPU --tex /w/earth_albedo.png 2>&1 | grep -vE "^Fra:|Sample|Path Tracing" | tail -40
+$B -b -P /w/globe_flyover.py -- --out /w/f/frame_ --frames 1-120 --samples 64 --res 1920x1080 --device GPU --tex /w/earth_albedo.png 2>&1 | grep -E "Saved:|Error|error|Warning: |OPTIX|CUDA|Device" 
 T1=$(date +%s); echo "render_seconds=$((T1-T0)) frames=$(ls /w/f | wc -l)"
 ffmpeg -y -loglevel error -framerate 24 -i /w/f/frame_%04d.png -c:v libx264 -pix_fmt yuv420p -crf 18 -preset medium /w/globe_flyover_1080p.mp4
 ls -la /w/globe_flyover_1080p.mp4
