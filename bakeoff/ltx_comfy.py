@@ -91,7 +91,7 @@ def build(prompt, seed, prefix, image_name=None):
     frames = g.add("VAEDecodeTiled", links={"samples": (sep2, 0), "vae": (vae, 0)}, pos=[512, 64, 64, 16])
     audio = g.add("LTXVAudioVAEDecode", links={"samples": (sep2, 1), "audio_vae": (avae, 0)})
     vid = g.add("CreateVideo", links={"images": (frames, 0), "audio": (audio, 0)}, named={"fps": float(FPS)})
-    g.add("SaveVideo", links={"video": (vid, 0)}, pos=[f"video/{prefix}", "auto", "auto"])
+    g.add("SaveVideo", links={"video": (vid, 0)}, named={"filename_prefix": f"video/{prefix}", "format": "auto", "codec": "auto"})
     return g.p
 
 def main():
@@ -108,8 +108,8 @@ def main():
     import torch; log("torch", torch.__version__, torch.version.cuda, torch.cuda.get_device_name(0))
     need = ["LTXVDualCFGGuider", "LTXVConcatAVLatent", "LTXVLatentUpsampler", "LTXVImgToVideoInplace", "ManualSigmas", "LTXVEmptyLatentAudio", "LTXVAudioVAEDecode", "LatentUpscaleModelLoader"]
     log("missing classes", [c for c in need if c not in INFO])
-    for c in need[:2] + ["LTXVImgToVideoInplace", "LTXVPreprocess", "LTXVEmptyLatentAudio", "CLIPLoader"]:
-        if c in INFO: log("widgets", c, widget_names(c))
+    for c in ["SaveVideo", "LTXVEmptyLatentAudio"]:
+        if c in INFO: log("spec", c, json.dumps(INFO[c]["input"])[:600])
     for k, s in enumerate(shots):
         sid = f"ltx_{s['id']}"; out = f"{OUT}/{sid}.mp4"; t0 = time.time()
         try:
