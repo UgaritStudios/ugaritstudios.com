@@ -29,12 +29,23 @@ sc.view_settings.view_transform = "AgX"
 sc.view_settings.look = "AgX - Punchy"
 if a.device == "GPU":
     prefs = bpy.context.preferences.addons["cycles"].preferences
+    found = None
     for t in ("OPTIX", "CUDA"):
         try:
-            prefs.compute_device_type = t; prefs.get_devices()
-            for d in prefs.devices: d.use = True
-            break
-        except Exception: pass
+            prefs.compute_device_type = t
+            prefs.refresh_devices()
+            devs = [d for d in prefs.devices if d.type == t]
+            if devs:
+                for d in prefs.devices:
+                    d.use = (d.type == t)
+                found = t
+                print("GPU_DEVICE", t, [d.name for d in devs], flush=True)
+                break
+        except Exception as e:
+            print("GPU_ERR", t, repr(e), flush=True)
+    if not found:
+        print("NO_GPU_FOUND - aborting instead of rendering on CPU", flush=True)
+        sys.exit(3)
     sc.cycles.device = "GPU"
 
 # ---------- world: deep navy with faint stars ----------
