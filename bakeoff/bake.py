@@ -182,13 +182,25 @@ def run_ltx(shots):
         t0 = time.time()
         path = snapshot_download("Lightricks/LTX-2.5-Diffusers", ignore_patterns=["transformer_full/*", "*.md"], local_dir=f"{W}/ltx")
         log("ltx downloaded", f"{time.time()-t0:.0f}s", subprocess.run(f"du -sh {W}/ltx", shell=True, capture_output=True, text=True).stdout.strip())
-        pipe = LTX2Pipeline.from_pretrained(path, dtype=torch.bfloat16)
-        pipe.enable_model_cpu_offload()
+        # The pod's container RAM (~50 GB) can't hold the bf16 22B transformer + Gemma text encoder,
+        # so load them quantized straight onto the GPU (8-bit transformer, 4-bit text encoder).
+        from diffusers import PipelineQuantizationConfig, BitsAndBytesConfig as DBnb
+        from transformers import BitsAndBytesConfig as TBnb
+        qmode = os.environ.get("LTX_QUANT", "8")
+        qc = PipelineQuantizationConfig(quant_mapping={
+            "transformer": DBnb(load_in_8bit=True) if qmode == "8" else DBnb(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16),
+            "text_encoder": TBnb(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16)})
+        pipe = LTX2Pipeline.from_pretrained(path, torch_dtype=torch.bfloat16, quantization_config=qc, low_cpu_mem_usage=True)
+        for name, comp in pipe.components.items():
+            if hasattr(comp, "to") and not getattr(comp, "is_loaded_in_8bit", False) and not getattr(comp, "is_loaded_in_4bit", False) and not getattr(getattr(comp, "config", None), "quantization_config", None):
+                try: comp.to("cuda")
+                except Exception as e: log("to cuda failed", name, repr(e)[:200])
+        log("ltx loaded quant", qmode, "vram GB", round(torch.cuda.memory_allocated() / 1e9, 1), subprocess.run("free -g | sed -n 2p", shell=True, capture_output=True, text=True).stdout.strip())
         log("ltx call signature", str(inspect.signature(pipe.__call__))[:1500])
         if encode_video: log("encode_video signature", str(inspect.signature(encode_video))[:400])
         ipipe = None
         if LTX2ImageToVideoPipeline:
-            try: ipipe = LTX2ImageToVideoPipeline.from_pipe(pipe); ipipe.enable_model_cpu_offload()
+            try: ipipe = LTX2ImageToVideoPipeline.from_pipe(pipe)
             except Exception as e: log("i2v from_pipe failed", repr(e)[:300])
     except Exception as e:
         log("LTX SETUP FAILED", repr(e)[:800]); traceback.print_exc(file=LOG); return times
@@ -204,7 +216,13 @@ def run_ltx(shots):
         try:
             params = inspect.signature(p.__call__).parameters
             kw = {a: b for a, b in kw.items() if a in params or "kwargs" in params}
-            res = p(**kw); video = res[0]; audio = res[1] if len(res) > 1 else None
+            torch.cuda.reset_peak_memory_stats()
+            try: res = p(**kw)
+            except torch.OutOfMemoryError:
+                torch.cuda.empty_cache(); log("vram OOM at 1280x704, retrying 960x544", sid)
+                kw.update(width=960, height=544); res = p(**kw)
+            video = res[0]
+            log("peak vram GB", round(torch.cuda.max_memory_allocated() / 1e9, 1)); audio = res[1] if len(res) > 1 else None
             import numpy as np
             v = np.asarray(video[0]) if not hasattr(video, "frames") else np.asarray(video.frames[0])
             saved = False
